@@ -1,0 +1,33 @@
+name: Build binary
+
+on:
+  push:
+    branches: [ '**' ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image
+      run: |
+        docker compose up mysql -d
+        docker build --network=host -t mvn-rs .
+        docker compose down
+
+    - name: Extract binary
+      run: |
+        docker create --name mvn-rs mvn-rs
+        docker cp mvn-rs:/app/target/release/mvn-rs $GITHUB_WORKSPACE/mvn-rs
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: mvn-rs
+        path: mvn-rs
