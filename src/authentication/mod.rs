@@ -15,8 +15,8 @@ impl AuthenticationResult {
     pub fn as_response(&self) -> HttpResponse {
         return match self {
             AuthenticationResult::Success(_) => HttpResponse::Ok().into(),
-            AuthenticationResult::Unauthorized => HttpResponse::Unauthorized().into(),
-            AuthenticationResult::Forbidden => HttpResponse::Forbidden().into(),
+            AuthenticationResult::Unauthorized => HttpResponse::Unauthorized().body("Unauthorized"),
+            AuthenticationResult::Forbidden => HttpResponse::Forbidden().body("Forbidden"),
             AuthenticationResult::Error(reason) => HttpResponse::InternalServerError().body(reason.to_string()),
         };
     }
