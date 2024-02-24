@@ -1,4 +1,4 @@
-use actix_web::{App, HttpServer, main, web};
+use actix_web::{App, get, HttpResponse, HttpServer, main, Responder, web};
 use sqlx::{MySql, Pool};
 use sqlx::mysql::MySqlPoolOptions;
 
@@ -55,10 +55,16 @@ async fn main() -> std::io::Result<()> {
     return HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(app_state.clone()))
+            .service(favicon)
             .service(route::read)
             .service(route::deploy)
     })
         .bind(webserver.to_address())?
         .run()
         .await;
+}
+
+#[get("/favicon.ico")]
+async fn favicon() -> impl Responder {
+    return HttpResponse::Ok().body(&include_bytes!("../assets/favicon.ico")[..]);
 }

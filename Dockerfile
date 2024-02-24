@@ -5,5 +5,6 @@ COPY Cargo.lock /app
 COPY src /app/src
 COPY migrations /app/migrations
 COPY .env /app
+COPY assets /app/assets
 
 RUN cargo build --release
