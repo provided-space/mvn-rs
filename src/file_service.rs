@@ -13,10 +13,10 @@ impl FileService {
         return File::create(path).and_then(|mut file| file.write_all(buf));
     }
 
-    pub fn read(&self, path: &String) -> Result<String, Error> {
+    pub fn read(&self, path: &String) -> Result<Vec<u8>, Error> {
         return File::open(path).and_then(|mut file| {
-            let mut buf = String::new();
-            file.read_to_string(&mut buf)?;
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf)?;
             return Ok(buf);
         });
     }
