@@ -41,16 +41,26 @@ async fn deploy(path: web::Path<String>, app_state: web::Data<AppState>, authent
     let version = match app_state.version_repository.get_or_create_version(&app_state.pool, coordinates.clone().to_version()).await {
         Ok(Some(version)) => version,
         Ok(None) => return HttpResponse::InternalServerError().body("No applicable artifact version could be obtained."),
-        Err(_) => return HttpResponse::Conflict().body("This artifact version would have led to a duplicate."), // TODO: A conflict occurs if an unique key constraint is violated. Otherwise we should return an internal server error
+        Err(sqlx::Error::Database(err)) => {
+            if err.is_unique_violation() {
+                return HttpResponse::Conflict().body("This artifact version would have led to a duplicate.");
+            }
+            return HttpResponse::InternalServerError().body("Failed to handle the specified version due to a database error.");
+        },
+        Err(_) => return HttpResponse::InternalServerError().body("Failed to handle the specified version."),
     };
 
     let result = sqlx::query!("INSERT INTO maven_file (version_id, name, uri, path) VALUES (?, ?, ?, ?)", version.id, coordinates.file, uri, file_path).execute(&app_state.pool).await;
-    if result.is_err() {
-        // TODO: A conflict occurs if an unique key constraint is violated. Otherwise we should return an internal server error
-        return HttpResponse::Conflict().body("The given file already exists and cannot be overridden.");
-    }
-
-    return HttpResponse::Ok().into();
+    return match result {
+        Ok(_) => HttpResponse::Ok().into(),
+        Err(sqlx::Error::Database(err)) => {
+            if err.is_unique_violation() {
+                return HttpResponse::Conflict().body("The given file already exists and cannot be overridden.");
+            }
+            return HttpResponse::InternalServerError().body("Failed to persist file due to a database error.");
+        },
+        Err(_) => HttpResponse::InternalServerError().body("Failed to persist file."),
+    };
 }
 
 // For now, we assume that we're just getting metadata for artifacts
@@ -72,12 +82,16 @@ async fn deploy_metadata(uri: String, app_state: web::Data<AppState>, authentica
     }
 
     let result = sqlx::query!("INSERT INTO maven_file (name, uri, path) VALUES (?, ?, ?)", coordinates.artifact, uri, file_path).execute(&app_state.pool).await;
-    if result.is_err() {
-        // TODO: A conflict occurs if an unique key constraint is violated. Otherwise we should return an internal server error
-        return HttpResponse::Conflict().body("The given file already exists and cannot be overridden.");
-    }
-
-    return HttpResponse::Ok().into();
+    return match result {
+        Ok(_) => HttpResponse::Ok().into(),
+        Err(sqlx::Error::Database(err)) => {
+            if err.is_unique_violation() {
+                return HttpResponse::Conflict().body("The given metadata already exists.");
+            }
+            return HttpResponse::InternalServerError().body("Failed to persist metadata due to a database error.");
+        },
+        Err(_) => HttpResponse::InternalServerError().body("Failed to persist metadata."),
+    };
 }
 
 #[get("{path:.*}")]
