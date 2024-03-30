@@ -34,11 +34,6 @@ async fn deploy(path: web::Path<String>, app_state: web::Data<AppState>, authent
         result => return result.as_response(),
     };
 
-    let file_path = format!("{}/{}", app_state.config.file_storage, uuid::Uuid::new_v4());
-    if app_state.files.write(&file_path, payload.as_ref()).is_err() {
-        return HttpResponse::InternalServerError().body("Failed to write file contents.");
-    }
-
     let version = match app_state.version_repository.get_or_create_version(&app_state.pool, coordinates.clone().to_version(), access_token).await {
         Ok(Some(version)) => version,
         Ok(None) => return HttpResponse::InternalServerError().body("No applicable artifact version could be obtained."),
@@ -51,17 +46,23 @@ async fn deploy(path: web::Path<String>, app_state: web::Data<AppState>, authent
         Err(_) => return HttpResponse::InternalServerError().body("Failed to handle the specified version."),
     };
 
+    let file_path = format!("{}/{}", app_state.config.file_storage, uuid::Uuid::new_v4());
     let result = sqlx::query!("INSERT INTO maven_file (version_id, name, uri, path) VALUES (?, ?, ?, ?)", version.id, coordinates.file, uri, file_path).execute(&app_state.pool).await;
-    return match result {
-        Ok(_) => HttpResponse::Ok().into(),
+    match result {
         Err(sqlx::Error::Database(err)) => {
             if err.is_unique_violation() {
                 return HttpResponse::Conflict().body("The given file already exists and cannot be overridden.");
             }
             return HttpResponse::InternalServerError().body("Failed to persist file due to a database error.");
         },
-        Err(_) => HttpResponse::InternalServerError().body("Failed to persist file."),
+        Err(_) => return HttpResponse::InternalServerError().body("Failed to persist file."),
+        _ => {},
     };
+
+    if app_state.files.write(&file_path, payload.as_ref()).is_err() {
+        return HttpResponse::InternalServerError().body("Failed to write file contents.");
+    }
+    return HttpResponse::Ok().into();
 }
 
 // For now, we assume that we're just getting metadata for artifacts
@@ -83,22 +84,36 @@ async fn deploy_metadata(uri: String, app_state: web::Data<AppState>, authentica
         _ => {},
     };
 
-    let file_path = format!("{}/{}", app_state.config.file_storage, uuid::Uuid::new_v4());
-    if app_state.files.write(&file_path, payload.as_ref()).is_err() {
-        return HttpResponse::InternalServerError().body("Failed to write file contents.");
-    }
+    let file_result = sqlx::query_as!(File, "SELECT file.id, file.version_id, file.name, file.uri, file.path FROM maven_file file WHERE file.uri = ?", uri).fetch_optional(&app_state.pool).await;
+    match file_result {
+        Ok(Some(file)) => {
+            if app_state.files.write(&file.path, payload.as_ref()).is_err() {
+                return HttpResponse::InternalServerError().body("Failed to write file contents.");
+            }
+            return HttpResponse::Ok().into();
+        },
+        Err(sqlx::Error::Database(err)) => return HttpResponse::InternalServerError().body("Failed to persist metadata due to a database error."),
+        Err(_) => return return HttpResponse::InternalServerError().body("Failed to persist metadata."),
+        _ => {},
+    };
 
+    let file_path = format!("{}/{}", app_state.config.file_storage, uuid::Uuid::new_v4());
     let result = sqlx::query!("INSERT INTO maven_file (name, uri, path) VALUES (?, ?, ?)", coordinates.artifact, uri, file_path).execute(&app_state.pool).await;
-    return match result {
-        Ok(_) => HttpResponse::Ok().into(),
+    match result {
         Err(sqlx::Error::Database(err)) => {
             if err.is_unique_violation() {
                 return HttpResponse::Conflict().body("The given metadata already exists.");
             }
             return HttpResponse::InternalServerError().body("Failed to persist metadata due to a database error.");
         },
-        Err(_) => HttpResponse::InternalServerError().body("Failed to persist metadata."),
+        Err(_) => return HttpResponse::InternalServerError().body("Failed to persist metadata."),
+        _ => {},
     };
+
+    if app_state.files.write(&file_path, payload.as_ref()).is_err() {
+        return HttpResponse::InternalServerError().body("Failed to write file contents.");
+    }
+    return HttpResponse::Ok().into();
 }
 
 #[get("{path:.*}")]
