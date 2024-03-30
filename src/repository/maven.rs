@@ -3,6 +3,7 @@ use sqlx::{Error, MySql, Pool};
 use crate::model::maven::{Artifact, Version};
 use crate::coordinates::Version as VersionDTO;
 use crate::coordinates::Artifact as ArtifactDTO;
+use crate::model::AccessToken;
 
 #[derive(Clone)]
 pub struct VersionRepository {
@@ -14,8 +15,8 @@ impl VersionRepository {
         return VersionRepository { artifacts };
     }
 
-    pub async fn get_or_create_version(&self, pool: &Pool<MySql>, version: VersionDTO) -> Result<Option<Version>, Error> {
-        let artifact = match self.artifacts.get_artifact(pool, version.clone().to_artifact()).await? {
+    pub async fn get_or_create_version(&self, pool: &Pool<MySql>, version: VersionDTO, access_token: AccessToken) -> Result<Option<Version>, Error> {
+        let artifact = match self.artifacts.get_writable_artifact(pool, version.clone().to_artifact(), access_token).await? {
             Some(artifact) => artifact,
             None => return Ok(None),
         };
@@ -44,13 +45,15 @@ impl ArtifactRepository {
         return ArtifactRepository {};
     }
 
-    pub async fn get_artifact(&self, pool: &Pool<MySql>, artifact: ArtifactDTO) -> Result<Option<Artifact>, Error> {
+    pub async fn get_writable_artifact(&self, pool: &Pool<MySql>, artifact: ArtifactDTO, access_token: AccessToken) -> Result<Option<Artifact>, Error> {
         return sqlx::query_as!(
             Artifact,
             "SELECT artifact.id, artifact.group_id, artifact.name, artifact.public as `public: bool`
             FROM maven_artifact artifact
             INNER JOIN maven_group g ON artifact.group_id = g.id
-            WHERE g.name = ? AND artifact.name = ?",
+            INNER JOIN maven_permission permission ON permission.artifact_id = artifact.id AND permission.access_token_id = ?
+            WHERE g.name = ? AND artifact.name = ? AND permission.write",
+            access_token.id,
             artifact.group,
             artifact.artifact,
         ).fetch_optional(pool).await;

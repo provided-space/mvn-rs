@@ -29,3 +29,13 @@ pub struct File {
     pub uri: String,
     pub path: String,
 }
+
+#[derive(FromRow)]
+pub struct MavenPermission {
+    pub id: u32,
+    pub access_token_id: u32,
+    pub entity_type: String,
+    pub artifact_id: Option<u32>,
+    pub read: bool,
+    pub write: bool,
+}
