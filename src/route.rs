@@ -2,6 +2,7 @@ use actix_web::{get, HttpResponse, put, Responder, web};
 use actix_web_httpauth::headers::authorization::{Authorization, Basic};
 
 use crate::AppState;
+use crate::authentication::AuthenticationResult;
 use crate::coordinates::Parser;
 use crate::model::maven::File;
 
@@ -28,17 +29,17 @@ async fn deploy(path: web::Path<String>, app_state: web::Data<AppState>, authent
     };
 
     let authentication = authentication.as_ref();
-    let result = app_state.authenticator.authenticate(authentication, &app_state.pool).await;
-    if !result.is_success() {
-        return result.as_response();
-    }
+    let access_token = match app_state.authenticator.authenticate(authentication, &app_state.pool).await {
+        AuthenticationResult::Success(access_token) => access_token,
+        result => return result.as_response(),
+    };
 
     let file_path = format!("{}/{}", app_state.config.file_storage, uuid::Uuid::new_v4());
     if app_state.files.write(&file_path, payload.as_ref()).is_err() {
         return HttpResponse::InternalServerError().body("Failed to write file contents.");
     }
 
-    let version = match app_state.version_repository.get_or_create_version(&app_state.pool, coordinates.clone().to_version()).await {
+    let version = match app_state.version_repository.get_or_create_version(&app_state.pool, coordinates.clone().to_version(), access_token).await {
         Ok(Some(version)) => version,
         Ok(None) => return HttpResponse::InternalServerError().body("No applicable artifact version could be obtained."),
         Err(sqlx::Error::Database(err)) => {
@@ -71,10 +72,16 @@ async fn deploy_metadata(uri: String, app_state: web::Data<AppState>, authentica
     };
 
     let authentication = authentication.as_ref();
-    let result = app_state.authenticator.authenticate(authentication, &app_state.pool).await;
-    if !result.is_success() {
-        return result.as_response();
-    }
+    let access_token = match app_state.authenticator.authenticate(authentication, &app_state.pool).await {
+        AuthenticationResult::Success(access_token) => access_token,
+        result => return result.as_response(),
+    };
+
+    match app_state.artifact_repository.get_writable_artifact(&app_state.pool, coordinates.clone().to_artifact(), access_token).await {
+        Err(_) => return HttpResponse::InternalServerError().body("Failed to obtain permission for writing to this scope."),
+        Ok(None) => return HttpResponse::Forbidden().body("Identity is not permitted to write to this scope."),
+        _ => {},
+    };
 
     let file_path = format!("{}/{}", app_state.config.file_storage, uuid::Uuid::new_v4());
     if app_state.files.write(&file_path, payload.as_ref()).is_err() {
