@@ -2,7 +2,7 @@ use actix_web::{get, HttpResponse, put, Responder, web};
 use actix_web_httpauth::headers::authorization::{Authorization, Basic};
 
 use crate::AppState;
-use crate::authentication::AuthenticationResult;
+use crate::authentication::{ArtifactPermission, AuthenticationResult};
 use crate::coordinates::Parser;
 use crate::model::maven::File;
 
@@ -92,8 +92,7 @@ async fn deploy_metadata(uri: String, app_state: web::Data<AppState>, authentica
             }
             return HttpResponse::Ok().into();
         },
-        Err(sqlx::Error::Database(err)) => return HttpResponse::InternalServerError().body("Failed to persist metadata due to a database error."),
-        Err(_) => return return HttpResponse::InternalServerError().body("Failed to persist metadata."),
+        Err(sqlx::Error::Database(_err)) => return HttpResponse::InternalServerError().body("Failed to persist metadata."),
         _ => {},
     };
 
@@ -117,7 +116,7 @@ async fn deploy_metadata(uri: String, app_state: web::Data<AppState>, authentica
 }
 
 #[get("{path:.*}")]
-async fn read(path: web::Path<String>, app_state: web::Data<AppState>) -> impl Responder {
+async fn read(path: web::Path<String>, app_state: web::Data<AppState>, authentication: Option<web::Header<Authorization<Basic>>>) -> impl Responder {
     let uri = path.into_inner();
     let coordinates = match Parser::parse_to_file(uri.as_str()) {
         Ok(coordinates) => coordinates,
@@ -129,6 +128,11 @@ async fn read(path: web::Path<String>, app_state: web::Data<AppState>) -> impl R
         Ok(Some(file)) => file,
         Ok(None) => return HttpResponse::NotFound().body("The requested file does not exist in this registry."),
         Err(_) => return HttpResponse::InternalServerError().body("Querying for the requested file failed."),
+    };
+
+    match app_state.artifact_authenticator.authenticate_read(coordinates.to_version().to_artifact(), authentication, &app_state.pool).await {
+        ArtifactPermission::Granted => {},
+        permission => return permission.as_response(),
     };
 
     return match app_state.files.read(&file.path) {

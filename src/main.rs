@@ -1,11 +1,13 @@
 use actix_web::{App, get, HttpResponse, HttpServer, main, Responder, web};
 use sqlx::{MySql, Pool};
 use sqlx::mysql::MySqlPoolOptions;
+use crate::authentication::artifact_authenticator::ArtifactAuthenticator;
 
 use crate::authentication::authenticator::Authenticator;
 use crate::config::ApplicationConfig;
 use crate::file_service::FileService;
-use crate::repository::maven::{ArtifactRepository, VersionRepository};
+use crate::repository::maven::artifact_repository::ArtifactRepository;
+use crate::repository::maven::version_repository::VersionRepository;
 
 mod config;
 mod model;
@@ -20,6 +22,7 @@ struct AppState {
     pool: Pool<MySql>,
     config: ApplicationConfig,
     authenticator: Authenticator,
+    artifact_authenticator: ArtifactAuthenticator,
     version_repository: VersionRepository,
     artifact_repository: ArtifactRepository,
     files: FileService,
@@ -41,10 +44,12 @@ async fn main() -> std::io::Result<()> {
     }
 
     let artifact_repository = ArtifactRepository::new();
+    let authenticator = Authenticator::new(config.clone().authentication.secret);
     let app_state = AppState {
         pool,
         config: config.clone(),
-        authenticator: Authenticator::new(config.authentication.secret),
+        artifact_authenticator: ArtifactAuthenticator::new(artifact_repository.clone(), authenticator.clone()),
+        authenticator,
         version_repository: VersionRepository::new(artifact_repository.clone()),
         artifact_repository,
         files: FileService::new(),
