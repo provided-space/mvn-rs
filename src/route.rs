@@ -3,7 +3,7 @@ use actix_web_httpauth::headers::authorization::{Authorization, Basic};
 
 use crate::AppState;
 use crate::authentication::{ArtifactPermission, AuthenticationResult};
-use crate::coordinates::Parser;
+use crate::coordinates::{Artifact as ArtifactDTO, Parser};
 use crate::model::maven::File;
 
 fn is_metadata(uri: &str) -> Result<bool, regex::Error> {
@@ -118,9 +118,34 @@ async fn deploy_metadata(uri: String, app_state: web::Data<AppState>, authentica
 #[get("{path:.*}")]
 async fn read(path: web::Path<String>, app_state: web::Data<AppState>, authentication: Option<web::Header<Authorization<Basic>>>) -> impl Responder {
     let uri = path.into_inner();
+    match is_metadata(uri.as_ref()) {
+        Ok(true) => return read_metadata(uri, app_state, authentication).await,
+        Err(_) => return HttpResponse::InternalServerError().body("Failed to check if the file is metadata."),
+        _ => {}
+    };
+
     let coordinates = match Parser::parse_to_file(uri.as_str()) {
         Ok(coordinates) => coordinates,
         Err(_) => return HttpResponse::BadRequest().body("Coordinates could not be parsed."),
+    };
+
+    return read_file(uri, app_state, authentication, coordinates.to_version().to_artifact()).await;
+}
+
+// For now, we assume that we're just serving metadata for artifacts
+async fn read_metadata(uri: String, app_state: web::Data<AppState>, authentication: Option<web::Header<Authorization<Basic>>>) -> HttpResponse {
+    let coordinates = match Parser::parse_to_version(uri.as_str()) {
+        Ok(coordinates) => coordinates,
+        Err(_) => return HttpResponse::BadRequest().body("Coordinates could not be parsed."),
+    };
+
+    return read_file(uri, app_state, authentication, coordinates.to_artifact()).await;
+}
+
+async fn read_file(uri: String, app_state: web::Data<AppState>, authentication: Option<web::Header<Authorization<Basic>>>, artifact: ArtifactDTO) -> HttpResponse {
+    match app_state.artifact_authenticator.authenticate_read(artifact, authentication, &app_state.pool).await {
+        ArtifactPermission::Granted => {},
+        permission => return permission.as_response(),
     };
 
     let file_result = sqlx::query_as!(File, "SELECT file.id, file.version_id, file.name, file.uri, file.path FROM maven_file file WHERE file.uri = ?", uri).fetch_optional(&app_state.pool).await;
@@ -128,11 +153,6 @@ async fn read(path: web::Path<String>, app_state: web::Data<AppState>, authentic
         Ok(Some(file)) => file,
         Ok(None) => return HttpResponse::NotFound().body("The requested file does not exist in this registry."),
         Err(_) => return HttpResponse::InternalServerError().body("Querying for the requested file failed."),
-    };
-
-    match app_state.artifact_authenticator.authenticate_read(coordinates.to_version().to_artifact(), authentication, &app_state.pool).await {
-        ArtifactPermission::Granted => {},
-        permission => return permission.as_response(),
     };
 
     return match app_state.files.read(&file.path) {

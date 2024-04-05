@@ -22,7 +22,7 @@ impl ArtifactAuthenticator {
         let artifact = match self.artifact_repository.get_artifact(pool, artifact).await {
             Ok(Some(artifact)) => artifact,
             Ok(None) => return Error("The requested artifact does not exist in this registry.".to_owned()),
-            Err(_) => return Error("".to_owned()),
+            Err(_) => return Error("Failed to query for artifact.".to_owned()),
         };
         if artifact.public {
             return Granted;
