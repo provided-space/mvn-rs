@@ -22,19 +22,16 @@ Users, AccessTokens, Groups, Artifacts and Permissions have to be configured man
 ## Authentication
 
 When configuring your repository in your maven project, you have to specify the credentials. (Reading from public artifacts is possible without authentication.)<br>
-Credentials in the access_token table are stored as Argon2 hashes.
-
 The username matches the name in your user table. The password is a JWT, pointing to the AccessToken in your database.<br>
 Your JWT payload could be something like this:
 ```json
 {
-  "id": 1,
-  "credentials": "plaintext password"
+  "id": 1
 }
 ```
 
 ## Example cURL request
 ```curl
 curl --location 'http://localhost/com/organisation/library/1.0.0-ALPHA/library-1.0.0-ALPHA.pom' \
---header 'Authorization: Basic ZGV2ZWxvcG1lbnQ6ZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnBaQ0k2TVN3aVkzSmxaR1Z1ZEdsaGJITWlPaUp3YkdGcGJuUmxlSFFnY0dGemMzZHZjbVFpZlEucTZ0YWZtSGcxdG9fT0hOZzl6NWJudDR3dGRHdE1IMTYtaGU2cE1vWGtwaw=='
+--header 'Authorization: Basic ZGV2ZWxvcG1lbnQ6ZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SnBaQ0k2TVgwLkl2eTE0TmNUZWNjeUd6MVd3X1BPcUtKaWNLdWFsWnlEZmRiYzhTU1pRT28='
 ```

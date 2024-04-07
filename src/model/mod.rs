@@ -12,5 +12,4 @@ pub struct User {
 pub struct AccessToken {
     pub id: u32,
     pub user_id: u32,
-    pub credentials: String,
 }

@@ -1,5 +1,4 @@
 use actix_web_httpauth::headers::authorization::Basic;
-use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use hmac::digest::{KeyInit};
 use hmac::Hmac;
 use jwt::VerifyWithKey;
@@ -37,24 +36,16 @@ impl Authenticator {
             Err(_) => return Unauthorized,
         };
 
-        let access_token = match self.find_access_token(pool, claims.id, authentication.user_id()).await {
-            Ok(access_token) => access_token,
-            Err(result) => return result,
-        };
-
-        return match PasswordHash::new(&access_token.credentials) {
-            Ok(hash) => match Argon2::default().verify_password(claims.credentials.as_bytes(), &hash) {
-                Ok(_) => Success(access_token),
-                Err(_) => Forbidden,
-            },
-            Err(_) => Forbidden,
+        return match self.find_access_token(pool, claims.id, authentication.user_id()).await {
+            Ok(access_token) => Success(access_token),
+            Err(result) => result,
         };
     }
 
     async fn find_access_token(&self, pool: &Pool<MySql>, id: u32, user_id: &str) -> Result<AccessToken, AuthenticationResult> {
         let query = sqlx::query_as!(
             AccessToken,
-            "SELECT access_token.id, access_token.user_id, access_token.credentials
+            "SELECT access_token.id, access_token.user_id
             FROM access_token
             INNER JOIN user ON access_token.user_id = user.id
             WHERE access_token.id = ? AND user.name = ?",
@@ -73,5 +64,4 @@ impl Authenticator {
 #[derive(Deserialize)]
 struct IdentityClaim {
     id: u32,
-    credentials: String,
 }
