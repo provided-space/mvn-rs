@@ -29,5 +29,6 @@ jobs:
     - name: Build and push image
       run: |
         docker compose up mysql -d
-        docker buildx build --network=host -t ghcr.io/${{ github.repository }}:${{ github.ref_name }} --push .
+        docker build --network=host -t ghcr.io/${{ github.repository }}:${{ github.ref_name }} .
+        docker push ghcr.io/${{ github.repository }}:${{ github.ref_name }}
         docker compose down
