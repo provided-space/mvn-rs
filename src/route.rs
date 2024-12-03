@@ -15,7 +15,7 @@ fn is_metadata(uri: &str) -> Result<bool, regex::Error> {
 }
 
 #[put("{path:.*}")]
-async fn deploy(path: web::Path<String>, app_state: web::Data<AppState>, authentication: web::Header<Authorization<Basic>>, payload: web::Bytes) -> impl Responder {
+pub async fn deploy(path: web::Path<String>, app_state: web::Data<AppState>, authentication: web::Header<Authorization<Basic>>, payload: web::Bytes) -> impl Responder {
     let uri = path.into_inner();
     match is_metadata(uri.as_ref()) {
         Ok(true) => return deploy_metadata(uri, app_state, authentication, payload).await,
@@ -116,7 +116,7 @@ async fn deploy_metadata(uri: String, app_state: web::Data<AppState>, authentica
 }
 
 #[get("{path:.*}")]
-async fn read(path: web::Path<String>, app_state: web::Data<AppState>, authentication: Option<web::Header<Authorization<Basic>>>) -> impl Responder {
+pub async fn read(path: web::Path<String>, app_state: web::Data<AppState>, authentication: Option<web::Header<Authorization<Basic>>>) -> impl Responder {
     let uri = path.into_inner();
     match is_metadata(uri.as_ref()) {
         Ok(true) => return read_metadata(uri, app_state, authentication).await,

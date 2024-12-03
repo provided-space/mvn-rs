@@ -1,7 +1,9 @@
 use dotenv::dotenv;
 
 pub fn parse() -> ApplicationConfig {
-    dotenv().ok().expect("Could not load .env file");
+    if dotenv().is_err() {
+        println!("Couldn't find .env file. Loading config from environment.");
+    }
 
     return ApplicationConfig {
         database: DatabaseConfig {
